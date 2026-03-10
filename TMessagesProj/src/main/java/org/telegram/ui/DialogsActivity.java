@@ -2843,8 +2843,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.closeSearchByActiveAction);
                 NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.proxySettingsChanged);
                 getNotificationCenter().addObserver(this, NotificationCenter.filterSettingsUpdated);
-                getNotificationCenter().addObserver(this, NotificationCenter.dialogFiltersUpdated);
                 getNotificationCenter().addObserver(this, NotificationCenter.dialogsUnreadCounterChanged);
+            }
+            if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
+                getNotificationCenter().addObserver(this, NotificationCenter.dialogFiltersUpdated);
             }
             getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
             getNotificationCenter().addObserver(this, NotificationCenter.encryptedChatUpdated);
@@ -2894,6 +2896,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         getNotificationCenter().addObserver(this, NotificationCenter.activeAuctionsUpdated);
 
         loadDialogs(getAccountInstance());
+        if (onlySelect && initialDialogsType == DIALOGS_TYPE_FORWARD) {
+            getMessagesController().loadRemoteFilters(false);
+        }
         getMessagesController().getStoriesController().loadAllStories();
         getMessagesController().loadPinnedDialogs(folderId, 0, null);
         if (databaseMigrationHint != null && !getMessagesStorage().isDatabaseMigrationInProgress()) {
@@ -3051,8 +3056,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.closeSearchByActiveAction);
                 NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.proxySettingsChanged);
                 getNotificationCenter().removeObserver(this, NotificationCenter.filterSettingsUpdated);
-                getNotificationCenter().removeObserver(this, NotificationCenter.dialogFiltersUpdated);
                 getNotificationCenter().removeObserver(this, NotificationCenter.dialogsUnreadCounterChanged);
+            }
+            if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
+                getNotificationCenter().removeObserver(this, NotificationCenter.dialogFiltersUpdated);
             }
             getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
             getNotificationCenter().removeObserver(this, NotificationCenter.encryptedChatUpdated);
@@ -3227,8 +3234,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         filterTabsView = null;
         selectedDialogs.clear();
 
-        additionNavigationBarHeight = hasMainTabs ? dp(MainTabsHelper.getMainTabsHeightWithMargins()) : 0;
-        additionFloatingButtonOffset = hasMainTabs ? dp(MainTabsHelper.getMainTabsHeight() + MainTabsHelper.getMainTabsMargin()) : 0;
+        additionNavigationBarHeight = hasMainTabs || foldersAtBottom ? dp(MainTabsHelper.getMainTabsHeightWithMargins()) : 0;
+        additionFloatingButtonOffset = hasMainTabs || foldersAtBottom ? dp(MainTabsHelper.getMainTabsHeight() + MainTabsHelper.getMainTabsMargin()) : 0;
 
         maximumVelocity = ViewConfiguration.get(context).getScaledMaximumFlingVelocity();
 
@@ -8843,7 +8850,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void updateFloatingButtonVisibility(boolean animated) {
-        final boolean isVisible = !(onlySelect && initialDialogsType != 10 || folderId != 0 || inPreviewMode || (searching && !onlySelect) || floatingButtonHidden);
+        final boolean isVisible = shouldShowFloatingButtons();
 
         if (floatingButton3 != null) {
             floatingButton3.setButtonVisible(isVisible, animated);
@@ -8854,7 +8861,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         FoldersHelper.INSTANCE.updateFoldersOffset(
             filterTabsView,
-            onlySelect,
+            getForwardControlsVisibleProgress(),
             hasMainTabs,
             navigationBarHeight,
             additionFloatingButtonOffset,
@@ -8881,13 +8888,24 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         FoldersHelper.INSTANCE.updateFoldersOffset(
             filterTabsView,
-            onlySelect,
+            getForwardControlsVisibleProgress(),
             hasMainTabs,
             navigationBarHeight,
             additionFloatingButtonOffset,
             additionalFloatingTranslation,
             floatingButtonPanOffset
         );
+    }
+
+    private boolean shouldShowFloatingButtons() {
+        return !(onlySelect && initialDialogsType != 10 || folderId != 0 || inPreviewMode || (searching && !onlySelect) || floatingButtonHidden);
+    }
+
+    private float getForwardControlsVisibleProgress() {
+        if (initialDialogsType != DIALOGS_TYPE_FORWARD || commentView == null) {
+            return 0f;
+        }
+        return animatorForwardButtonVisible.getFloatValue();
     }
 
     private boolean shouldUseMainTabsStyleForFolders() {
@@ -10320,6 +10338,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         isNextButton = shouldShowNextButton(this, selectedDialogs, commentView != null ? commentView.getFieldText() : "", false);
         writeButton.setResourceId(isNextButton ? R.drawable.msg_arrow_forward : R.drawable.send_plane_24);
+        updateFloatingButtonOffset();
     }
 
     @TargetApi(Build.VERSION_CODES.M)
@@ -13732,6 +13751,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             chatInputViewsContainer.getFadeView().setAlpha(factor);
             chatInputViewsContainer.getFadeView().setVisibility(factor > 0 ? View.VISIBLE : View.GONE);
         }
+
+        updateFloatingButtonOffset();
     }
 
     private void checkUi_topPanelVisible() {
