@@ -508,7 +508,6 @@ public class ChatHistorySearchActivity extends BaseFragment {
                 } else if (holder.itemView instanceof UserCell && gi.item != null) {
                     UserCell cell = (UserCell) holder.itemView;
                     ChatHistoryUtils.bindUserCell(cell, gi.item);
-                    cell.avatarImageView.setRoundRadius(AndroidUtilities.dp(24));
                 }
             }
         }
@@ -878,7 +877,6 @@ public class ChatHistorySearchActivity extends BaseFragment {
                 UserCell cell = (UserCell) holder.itemView;
                 ChatHistoryActivity.HistoryItem item = categoryItems.get(position);
                 ChatHistoryUtils.bindUserCell(cell, item);
-                cell.avatarImageView.setRoundRadius(AndroidUtilities.dp(24));
             }
         }
     }
