@@ -529,11 +529,10 @@ public class ChatHistorySearchActivity extends BaseFragment {
             ArrayList<ChatHistoryActivity.HistoryItem> users = new ArrayList<>();
             ArrayList<ChatHistoryActivity.HistoryItem> bots = new ArrayList<>();
             for (ChatHistoryActivity.HistoryItem item : results) {
-                if (item.user != null) {
-                    if (item.user.bot) bots.add(item); else users.add(item);
-                } else if (item.chat != null) {
-                    if (item.chat.broadcast) channels.add(item); else groups.add(item);
-                }
+                if (ChatHistoryUtils.shouldIncludeInCategory(item, 1)) channels.add(item);
+                else if (ChatHistoryUtils.shouldIncludeInCategory(item, 2)) groups.add(item);
+                else if (ChatHistoryUtils.shouldIncludeInCategory(item, 3)) users.add(item);
+                else if (ChatHistoryUtils.shouldIncludeInCategory(item, 4)) bots.add(item);
             }
             if (!channels.isEmpty()) {
                 order.add(GroupedItem.header(LocaleController.getString(R.string.ChatCategoryChannels)));
@@ -680,10 +679,6 @@ public class ChatHistorySearchActivity extends BaseFragment {
 
     private String getTabTitle(int position) {
         return ChatHistoryUtils.getCategoryTabTitle(results, position);
-    }
-
-    private int getCategoryCount(int categoryIndex) {
-        return ChatHistoryUtils.getCategoryCount(results, categoryIndex);
     }
 
     private void updateTabsStyle() {
@@ -834,15 +829,7 @@ public class ChatHistorySearchActivity extends BaseFragment {
                 return;
             }
             for (ChatHistoryActivity.HistoryItem item : results) {
-                if (categoryIndex == 0) {
-                    categoryItems.add(item);
-                } else if (categoryIndex == 1 && item.chat != null && item.chat.broadcast) {
-                    categoryItems.add(item);
-                } else if (categoryIndex == 2 && item.chat != null && !item.chat.broadcast) {
-                    categoryItems.add(item);
-                } else if (categoryIndex == 3 && item.user != null && !item.user.bot) {
-                    categoryItems.add(item);
-                } else if (categoryIndex == 4 && item.user != null && item.user.bot) {
+                if (ChatHistoryUtils.shouldIncludeInCategory(item, categoryIndex)) {
                     categoryItems.add(item);
                 }
             }
@@ -910,11 +897,8 @@ public class ChatHistorySearchActivity extends BaseFragment {
                 resultCountView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                 resultCountView.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(12), Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground)));
             }
-            // Refresh ViewPager pages - this will recreate all cells with new theme colors
-            if (viewPager != null) {
-                viewPager.removeAllViews();
-                viewPager.setAdapter(new SearchCategoryPagerAdapter());
-            }
+            // Refresh ViewPager pages
+            refreshAllPages();
             // Refresh adapter
             if (adapter != null) {
                 adapter.notifyDataSetChanged();

@@ -19,11 +19,8 @@ import android.graphics.Canvas;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -43,7 +40,6 @@ import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
-import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
@@ -74,10 +70,8 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
-import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.SearchTabsAndFiltersLayout;
 import org.telegram.ui.ChatActivity;
-import org.telegram.messenger.browser.Browser;
 
 import tw.nekomimi.nekogram.helpers.PasscodeHelper;
 
@@ -85,7 +79,6 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 
 import tw.nekomimi.nekogram.BackButtonMenuRecent;
-import java.util.HashSet;
 
 public class ChatHistoryActivity extends BaseFragment {
 
@@ -93,26 +86,18 @@ public class ChatHistoryActivity extends BaseFragment {
     private static final long SEARCH_DEBOUNCE_MS = 250L;
     private static final int TABS_CONTAINER_HEIGHT_DP = 50;
 
-    // Official Telegram user IDs that should be filtered
-    private static final long TELEGRAM_SERVICE_USER_ID = 777000L;
-    private static final long REPLIES_BOT_USER_ID = 708513L;
-    private static final long STICKERS_BOT_USER_ID = 429000L;
-    private static final long BOTFATHER_USER_ID = 136817688L;
-
     // Chat categories
     public enum ChatCategory {
-        ALL(0, "All"),
-        CHANNELS(1, "Channels"),
-        GROUPS(2, "Groups"),
-        USERS(3, "Users"),
-        BOTS(4, "Bots");
+        ALL(0),
+        CHANNELS(1),
+        GROUPS(2),
+        USERS(3),
+        BOTS(4);
 
         public final int id;
-        public final String title;
 
-        ChatCategory(int id, String title) {
+        ChatCategory(int id) {
             this.id = id;
-            this.title = title;
         }
     }
 
@@ -141,13 +126,11 @@ public class ChatHistoryActivity extends BaseFragment {
     private int searchRequestId;
     private boolean searchInProgress;
 
-    // State preservation - save search state and current tab
+    // State preservation
     private boolean savedSearchMode = false;
     private String savedSearchQuery = "";
-    private int savedCurrentTab = 0; // Save current selected tab index
-    private boolean isOpeningChat = false; // Flag indicating whether opening chat
-    private boolean hasBeenInitialized = false; // Flag indicating whether initialized
-    private boolean isRestoringSearchState = false; // Flag to prevent exitSearchMode during restoration
+    private int savedCurrentTab = 0;
+    private boolean isOpeningChat = false;
 
     // Multi-selection mode
     private boolean isMultiSelectMode = false;
@@ -271,9 +254,6 @@ public class ChatHistoryActivity extends BaseFragment {
         // Create ViewPager with tabs
         createViewPager(context, (SizeNotifierFrameLayout) fragmentView);
 
-        // Mark as initialized
-        hasBeenInitialized = true;
-
         // Restore saved state (only when returning from chat)
         if (isOpeningChat) {
             fragmentView.post(() -> restoreState(false));
@@ -366,48 +346,6 @@ public class ChatHistoryActivity extends BaseFragment {
         }
     }
 
-    private int getCategoryCount(ChatCategory category) {
-        int count = 0;
-        for (HistoryItem item : allHistoryItems) {
-            if (shouldIncludeItem(item, category)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private boolean shouldIncludeItem(HistoryItem item, ChatCategory category) {
-        // Filter out official Telegram chats (Saved Messages, Replies, etc.)
-        if (item.user != null) {
-            // Skip official Telegram users (like Replies bot, Saved Messages)
-            if (item.user.id == TELEGRAM_SERVICE_USER_ID || 
-                item.user.id == REPLIES_BOT_USER_ID ||  
-                item.user.id == UserConfig.getInstance(currentAccount).getClientUserId()) { // Self
-                return false;
-            }
-        }
-
-        if (category == ChatCategory.ALL) {
-            return true;
-        }
-
-        if (item.user != null) {
-            // User dialog
-            if (item.user.bot) {
-                return category == ChatCategory.BOTS;
-            } else {
-                return category == ChatCategory.USERS;
-            }
-        } else if (item.chat != null) {
-            // Chat dialog
-            if (item.chat.broadcast) {
-                return category == ChatCategory.CHANNELS;
-            } else {
-                return category == ChatCategory.GROUPS;
-            }
-        }
-        return false;
-    }
 
     private void loadHistoryItems() {
         allHistoryItems.clear();
@@ -417,7 +355,7 @@ public class ChatHistoryActivity extends BaseFragment {
 
         for (Long dialogId : recentDialogIds) {
             // Skip official/system dialogs
-            if (isOfficialDialog(dialogId, currentAccount)) {
+            if (ChatHistoryUtils.isOfficialDialog(dialogId, currentAccount)) {
                 continue;
             }
 
@@ -521,33 +459,6 @@ public class ChatHistoryActivity extends BaseFragment {
 
 
 
-    public static boolean isOfficialDialog(long dialogId, int account) {
-        if (dialogId > 0) {
-            // User dialog - filter official/system users
-            TLRPC.User user = MessagesController.getInstance(account).getUser(dialogId);
-            if (user != null) {
-                // Filter special users: self, replies, official bots
-                if (UserObject.isUserSelf(user) || UserObject.isReplyUser(user)) {
-                    return true;
-                }
-                // Filter official verified or support accounts if desired
-                // Uncomment the next line if you want to hide verified accounts too
-                // if (user.verified || user.support) return true;
-            }
-
-            // Filter specific official user IDs
-            if (dialogId == TELEGRAM_SERVICE_USER_ID || 
-                dialogId == STICKERS_BOT_USER_ID || 
-                dialogId == BOTFATHER_USER_ID) { 
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isOfficialDialog(long dialogId) {
-        return isOfficialDialog(dialogId, currentAccount);
-    }
 
     private void updateTitle() {
         if (isSearchMode) {
@@ -558,17 +469,12 @@ public class ChatHistoryActivity extends BaseFragment {
     }
 
     private void exitSearchMode() {
-        // Do not exit/clear while we are programmatically toggling search UI (e.g., entering/exiting multi-select)
-        if (isRestoringSearchState) {
-            return;
-        }
         cancelPendingSearch();
         searchRequestId++;
         searchInProgress = false;
         isSearchMode = false;
         searchQuery = "";
-        
-        // Clear saved search state only when user actively exits search (not during multi-select transitions)
+
         if (!isMultiSelectMode) {
             savedSearchMode = false;
             savedSearchQuery = "";
@@ -822,18 +728,14 @@ public class ChatHistoryActivity extends BaseFragment {
     private void saveScrollPosition() {
         if (viewPager == null) return;
         View v = viewPager.getCurrentView();
-        if (!(v instanceof FrameLayout)) return;
-        
-        FrameLayout container = (FrameLayout) v;
-        for (int i = 0; i < container.getChildCount(); i++) {
-            View child = container.getChildAt(i);
-            if (child instanceof RecyclerView) {
-                RecyclerView.LayoutManager lm = ((RecyclerView) child).getLayoutManager();
-                if (lm != null) {
-                    savedScrollState = lm.onSaveInstanceState();
-                    savedScrollTab = viewPager.getCurrentPosition();
-                }
-                break;
+        if (v == null) return;
+
+        Object tag = v.getTag();
+        if (tag instanceof RecyclerView) {
+            RecyclerView.LayoutManager lm = ((RecyclerView) tag).getLayoutManager();
+            if (lm != null) {
+                savedScrollState = lm.onSaveInstanceState();
+                savedScrollTab = viewPager.getCurrentPosition();
             }
         }
     }
@@ -848,23 +750,18 @@ public class ChatHistoryActivity extends BaseFragment {
             savedScrollTab = -1;
             return;
         }
-        
+
         View v = viewPager.getCurrentView();
-        if (!(v instanceof FrameLayout)) return;
-        
-        FrameLayout container = (FrameLayout) v;
-        for (int i = 0; i < container.getChildCount(); i++) {
-            View child = container.getChildAt(i);
-            if (child instanceof RecyclerView) {
-                RecyclerView.LayoutManager lm = ((RecyclerView) child).getLayoutManager();
-                if (lm != null) {
-                    lm.onRestoreInstanceState(savedScrollState);
-                }
-                break;
+        if (v == null) return;
+
+        Object tag = v.getTag();
+        if (tag instanceof RecyclerView) {
+            RecyclerView.LayoutManager lm = ((RecyclerView) tag).getLayoutManager();
+            if (lm != null) {
+                lm.onRestoreInstanceState(savedScrollState);
             }
         }
-        
-        // Clear after restore
+
         savedScrollState = null;
         savedScrollTab = -1;
     }
@@ -872,18 +769,13 @@ public class ChatHistoryActivity extends BaseFragment {
     @Override
     public void onResume() {
         super.onResume();
-        
-        if (BuildVars.LOGS_ENABLED) Log.d(TAG, "onResume: isOpeningChat=" + isOpeningChat + ", hasBeenInitialized=" + hasBeenInitialized + ", savedSearchMode=" + savedSearchMode);
-        
-        // If returning from chat page
-        if (isOpeningChat && hasBeenInitialized) {
-            if (BuildVars.LOGS_ENABLED) Log.d(TAG, "Returning from chat");
-            isOpeningChat = false; // Reset flag
 
-            // Keep the current list snapshot when returning from a chat so
-            // the user lands back at the same visual position they left.
-             
-            // If search mode was opened with empty query, exit search mode on return and close search UI
+        if (BuildVars.LOGS_ENABLED) Log.d(TAG, "onResume: isOpeningChat=" + isOpeningChat + ", savedSearchMode=" + savedSearchMode);
+
+        if (isOpeningChat && viewPager != null) {
+            if (BuildVars.LOGS_ENABLED) Log.d(TAG, "Returning from chat");
+            isOpeningChat = false;
+
             if (isSearchMode && android.text.TextUtils.isEmpty(searchQuery)) {
                 if (BuildVars.LOGS_ENABLED) Log.d(TAG, "Exiting empty search mode on return");
                 try {
@@ -893,19 +785,13 @@ public class ChatHistoryActivity extends BaseFragment {
                 } catch (Exception ignore) { }
                 exitSearchMode();
             }
-            
+
             restoreState(false);
             restoreScrollPosition();
-            
-            return; // Don't execute the general refresh logic below
+            return;
         }
-        
-        // Reset flag
+
         isOpeningChat = false;
-        
-        if (hasBeenInitialized) {
-            if (BuildVars.LOGS_ENABLED) Log.d(TAG, "General resume, keep list state");
-        }
     }
 
     @Override
@@ -928,33 +814,34 @@ public class ChatHistoryActivity extends BaseFragment {
 
     private void refreshAllPages() {
         if (viewPager != null) {
-            // Clear all cached views to prevent old content from showing
-            clearViewPagerCache();
-
-            // Force refresh all pages by recreating the adapter
-            viewPager.setAdapter(new CategoryPagerAdapter());
             updateTabs();
+            rebindCurrentPage();
         }
     }
 
-    private void clearViewPagerCache() {
-        if (viewPager != null) {
-            try {
-                // Force ViewPager to clear its view cache
-                viewPager.removeAllViews();
+    private void rebindCurrentPage() {
+        if (viewPager == null) return;
+        View currentView = viewPager.getCurrentView();
+        if (currentView == null) return;
 
-                // Request layout to ensure proper refresh
-                viewPager.requestLayout();
-
-                // Small delay to ensure views are properly cleared
-                viewPager.post(() -> {
-                    if (viewPager != null) {
-                        viewPager.invalidate();
-                    }
-                });
-            } catch (Exception e) {
-                // Ignore any exceptions during cache clearing
+        int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+        currentView.setBackgroundColor(backgroundColor);
+        Object tag = currentView.getTag();
+        if (tag instanceof BlurredRecyclerView) {
+            BlurredRecyclerView listView = (BlurredRecyclerView) tag;
+            listView.setBackgroundColor(backgroundColor);
+            RecyclerView.Adapter existing = listView.getAdapter();
+            if (existing instanceof CategoryListAdapter) {
+                CategoryListAdapter adapter = (CategoryListAdapter) existing;
+                adapter.updateCategoryData();
+                adapter.notifyDataSetChanged();
+                return;
             }
+        }
+        // Fallback: rebind via adapter
+        CategoryPagerAdapter adapter = (CategoryPagerAdapter) viewPager.adapter;
+        if (adapter != null) {
+            adapter.bindView(currentView, viewPager.getCurrentPosition(), 0);
         }
     }
 
@@ -975,23 +862,19 @@ public class ChatHistoryActivity extends BaseFragment {
             Context context = getContext();
             if (context == null) return new View(getParentActivity());
 
-            // Create a container to ensure proper isolation between pages
             FrameLayout container = new FrameLayout(context) {
                 @Override
                 protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                     super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-                    // Ensure container fills the entire available space
                     setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
                 }
             };
             container.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
 
-            // Create RecyclerView for this category
             BlurredRecyclerView listView = new BlurredRecyclerView(context);
             listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
             listView.setVerticalScrollBarEnabled(false);
-            
-            // Configure ItemAnimator for click animations
+
             DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
             itemAnimator.setChangeDuration(350);
             itemAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -999,58 +882,43 @@ public class ChatHistoryActivity extends BaseFragment {
             itemAnimator.setSupportsChangeAnimations(false);
             listView.setItemAnimator(itemAnimator);
 
-            // Add RecyclerView to container
             container.addView(listView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             ));
+            container.setTag(listView);
 
             return container;
         }
 
         @Override
         public void bindView(View view, int position, int viewType) {
-            if (view instanceof FrameLayout) {
-                FrameLayout container = (FrameLayout) view;
+            Object tag = view.getTag();
+            if (!(tag instanceof BlurredRecyclerView)) return;
 
-                // Find the RecyclerView inside the container
-                BlurredRecyclerView listView = null;
-                for (int i = 0; i < container.getChildCount(); i++) {
-                    View child = container.getChildAt(i);
-                    if (child instanceof BlurredRecyclerView) {
-                        listView = (BlurredRecyclerView) child;
-                        break;
+            int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+            view.setBackgroundColor(backgroundColor);
+            BlurredRecyclerView listView = (BlurredRecyclerView) tag;
+            listView.setBackgroundColor(backgroundColor);
+            CategoryListAdapter adapter = new CategoryListAdapter(getContext(), position);
+            listView.setAdapter(adapter);
+
+            listView.setOnItemClickListener((itemView, itemPosition) -> {
+                adapter.onItemClick(itemView, itemPosition);
+            });
+
+            listView.setOnItemLongClickListener((itemView, itemPosition) -> {
+                if (itemPosition >= 0 && itemPosition < adapter.categoryItems.size()) {
+                    if (!isMultiSelectMode) {
+                        enterMultiSelectMode();
                     }
+                    HistoryItem item = adapter.categoryItems.get(itemPosition);
+                    HistoryCell cell = (HistoryCell) itemView;
+                    toggleItemSelection(item, cell);
+                    return true;
                 }
-
-                if (listView != null) {
-                    // Clear any existing adapter to prevent data mixing
-                    listView.setAdapter(null);
-
-                    // Create fresh adapter with current data
-                    CategoryListAdapter adapter = new CategoryListAdapter(getContext(), position);
-                    listView.setAdapter(adapter);
-
-                    // Set click listener
-                    listView.setOnItemClickListener((itemView, itemPosition) -> {
-                        adapter.onItemClick(itemView, itemPosition);
-                    });
-                    
-                    // Set long click listener for multi-select mode
-                    listView.setOnItemLongClickListener((itemView, itemPosition) -> {
-                        if (itemPosition >= 0 && itemPosition < adapter.categoryItems.size()) {
-                            if (!isMultiSelectMode) {
-                                enterMultiSelectMode();
-                            }
-                            HistoryItem item = adapter.categoryItems.get(itemPosition);
-                            HistoryCell cell = (HistoryCell) itemView;
-                            toggleItemSelection(item, cell);
-                            return true;
-                        }
-                        return false;
-                    });
-                }
-            }
+                return false;
+            });
         }
     }
 
@@ -1079,7 +947,7 @@ public class ChatHistoryActivity extends BaseFragment {
             }
 
             for (HistoryItem item : sourceItems) {
-                if (shouldIncludeItem(item, category)) {
+                if (ChatHistoryUtils.shouldIncludeInCategory(item, category.id)) {
                     categoryItems.add(item);
                 }
             }
@@ -1111,6 +979,7 @@ public class ChatHistoryActivity extends BaseFragment {
             if (viewType == 1) { // Empty state
                 if (holder.itemView instanceof EmptyStateCell) {
                     EmptyStateCell emptyStateCell = (EmptyStateCell) holder.itemView;
+                    emptyStateCell.applyThemeColors();
 
                     if (isSearchMode) {
                         // In search mode, show search results
@@ -1235,7 +1104,7 @@ public class ChatHistoryActivity extends BaseFragment {
         LinkedList<Long> recentDialogIds = BackButtonMenuRecent.getRecentDialogs(account);
         
         for (Long dialogId : recentDialogIds) {
-            if (isOfficialDialog(dialogId, account)) {
+            if (ChatHistoryUtils.isOfficialDialog(dialogId, account)) {
                 continue;
             }
             HistoryItem item = createHistoryItem(dialogId, account);
@@ -1318,7 +1187,7 @@ public class ChatHistoryActivity extends BaseFragment {
 
         // Add Open option
         ActionBarMenuSubItem openItem = ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_openin, getString(R.string.Open), false, getResourceProvider());
-        openItem.setVisibility(finalCanOpen);
+        openItem.setVisibility(finalCanOpen ? View.VISIBLE : View.GONE);
         if (!finalCanOpen) {
             openItem.setColors(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3));
         }
@@ -1331,7 +1200,7 @@ public class ChatHistoryActivity extends BaseFragment {
 
         // Add Share option
         ActionBarMenuSubItem shareItem = ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_share, getString(R.string.ShareFile), false, getResourceProvider());
-        shareItem.setVisibility(finalHasPublicUsername);
+        shareItem.setVisibility(finalHasPublicUsername ? View.VISIBLE : View.GONE);
         if (!finalHasPublicUsername) {
             shareItem.setColors(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3));
         }
@@ -1344,7 +1213,7 @@ public class ChatHistoryActivity extends BaseFragment {
 
         // Add Copy option
         ActionBarMenuSubItem copyItem = ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_copy, getString(R.string.Copy), false, getResourceProvider());
-        copyItem.setVisibility(finalHasPublicUsername);
+        copyItem.setVisibility(finalHasPublicUsername ? View.VISIBLE : View.GONE);
         if (!finalHasPublicUsername) {
             copyItem.setColors(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3));
         }
@@ -1406,7 +1275,7 @@ public class ChatHistoryActivity extends BaseFragment {
             });
             showDialog(shareAlert);
         } catch (Exception e) {
-            e.printStackTrace();
+            if (BuildVars.LOGS_ENABLED) Log.e(TAG, "Failed to share chat", e);
         }
     }
 
@@ -1419,7 +1288,7 @@ public class ChatHistoryActivity extends BaseFragment {
             BulletinFactory.of(this).createSimpleBulletin(R.raw.copy,
                 getString(R.string.TextCopied)).show();
         } catch (Exception e) {
-            e.printStackTrace();
+            if (BuildVars.LOGS_ENABLED) Log.e(TAG, "Failed to copy username", e);
         }
     }
 
@@ -1496,7 +1365,6 @@ public class ChatHistoryActivity extends BaseFragment {
         private TextView usernameTextView;
         private AvatarDrawable avatarDrawable;
         private ActionBarMenuItem optionsButton;
-        private CheckBox checkBox;
         private CheckBox2 checkBox2;
         private HistoryItem currentItem;
         private boolean isSelected = false;
@@ -1509,14 +1377,7 @@ public class ChatHistoryActivity extends BaseFragment {
             avatarImageView.setRoundRadius(AndroidUtilities.dp(25));
             addView(avatarImageView, LayoutHelper.createFrame(50, 50, Gravity.LEFT | Gravity.CENTER_VERTICAL, 16, 0, 0, 0));
 
-            // Add CheckBox for multi-select mode (kept for compatibility)
-            checkBox = new CheckBox(context);
-            checkBox.setVisibility(GONE);
-            checkBox.setClickable(false);
-            checkBox.setFocusable(false);
-            addView(checkBox, LayoutHelper.createFrame(24, 24, Gravity.LEFT | Gravity.CENTER_VERTICAL, 60, 0, 0, 0));
-
-            // Add CheckBox2 like in DialogCell
+            // CheckBox2 for multi-select (shown on avatar corner)
             checkBox2 = new CheckBox2(context, 21, null) {
                 @Override
                 public void invalidate() {
@@ -1565,7 +1426,7 @@ public class ChatHistoryActivity extends BaseFragment {
             });
             addView(optionsButton, LayoutHelper.createFrame(48, 48, Gravity.RIGHT | Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
 
-            setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            applyThemeColors();
         }
 
         @Override
@@ -1664,8 +1525,21 @@ public class ChatHistoryActivity extends BaseFragment {
             return isSelected;
         }
 
+        public void applyThemeColors() {
+            int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+            int titleColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText);
+            int secondaryColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3);
+            setBackgroundColor(backgroundColor);
+            nameTextView.setTextColor(titleColor);
+            usernameTextView.setTextColor(secondaryColor);
+            optionsButton.setIconColor(secondaryColor);
+            optionsButton.setBackgroundDrawable(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
+            checkBox2.setColor(-1, Theme.key_windowBackgroundWhite, Theme.key_checkboxCheck);
+        }
+
         public void setDialog(HistoryItem item) {
             this.currentItem = item;
+            applyThemeColors();
             
             // Reset selection state when binding new item to handle cell recycling
             // The actual selection state will be set by onBindViewHolder after this
@@ -1728,7 +1602,7 @@ public class ChatHistoryActivity extends BaseFragment {
             descriptionTextView.setGravity(Gravity.CENTER);
             addView(descriptionTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 32, 80, 32, 48));
 
-            setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            applyThemeColors();
         }
 
         @Override
@@ -1741,6 +1615,7 @@ public class ChatHistoryActivity extends BaseFragment {
         }
 
         public void setText(String title, String description) {
+            applyThemeColors();
             if (TextUtils.isEmpty(title)) {
                 titleTextView.setVisibility(GONE);
             } else {
@@ -1755,25 +1630,28 @@ public class ChatHistoryActivity extends BaseFragment {
                 descriptionTextView.setVisibility(VISIBLE);
             }
         }
+
+        public void applyThemeColors() {
+            int backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite);
+            int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3);
+            setBackgroundColor(backgroundColor);
+            titleTextView.setTextColor(textColor);
+            descriptionTextView.setTextColor(textColor);
+        }
     }
 
     // Multi-select mode methods
     private void enterMultiSelectMode() {
-        // Save current search state before entering multi-select mode
         savedSearchMode = isSearchMode;
         savedSearchQuery = searchQuery;
-        
-        // If currently in search mode, close search field first to avoid ActionBar conflicts
+
+        // Close search field to avoid ActionBar conflicts, but preserve search state
         if (isSearchMode && actionBar != null && actionBar.isSearchFieldVisible()) {
-            // Set flag to prevent exitSearchMode during search field closure
-            isRestoringSearchState = true;
+            isSearchMode = false; // temporarily clear to prevent exitSearchMode side effects
             actionBar.closeSearchField();
-            // Reset flag after a short delay
-            AndroidUtilities.runOnUIThread(() -> {
-                isRestoringSearchState = false;
-            }, 100);
+            isSearchMode = savedSearchMode; // restore
         }
-        
+
         isMultiSelectMode = true;
         selectedItems.clear();
         updateActionBarForMultiSelect();
@@ -1783,43 +1661,24 @@ public class ChatHistoryActivity extends BaseFragment {
     private void exitMultiSelectMode() {
         isMultiSelectMode = false;
         selectedItems.clear();
-        
-        // Check if we need to restore search state
+
         boolean shouldRestoreSearch = savedSearchMode && !TextUtils.isEmpty(savedSearchQuery);
-        
+
         updateActionBarForNormalMode();
         updateAllCellsMultiSelectMode();
-        
-        // Restore search state if it was active before multi-select mode
+
         if (shouldRestoreSearch) {
             AndroidUtilities.runOnUIThread(() -> {
                 if (searchItem != null && actionBar != null) {
-                    // Set flag to prevent exitSearchMode during restoration
-                    isRestoringSearchState = true;
-                    
-                    // Set search mode and query first
                     isSearchMode = true;
                     searchQuery = savedSearchQuery;
-                    
-                    // Open search field with the saved query and make it visible
                     actionBar.openSearchField(savedSearchQuery, false);
-                    
-                    // Ensure the search field is properly displayed
                     if (searchItem.getSearchField() != null) {
                         searchItem.getSearchField().setText(savedSearchQuery);
                         searchItem.getSearchField().setSelection(savedSearchQuery.length());
                     }
-                    
-                    // Update title to reflect search mode
                     updateTitle();
-                    
-                    // Perform search to restore results
                     performSearch(savedSearchQuery);
-                    
-                    // Reset flag after restoration is complete
-                    AndroidUtilities.runOnUIThread(() -> {
-                        isRestoringSearchState = false;
-                    }, 100);
                 }
             }, 200);
         }
@@ -1899,25 +1758,19 @@ public class ChatHistoryActivity extends BaseFragment {
     }
 
     private void updateAllCellsMultiSelectMode() {
-        if (viewPager != null) {
-            for (int i = 0; i < viewPager.getChildCount(); i++) {
-                View child = viewPager.getChildAt(i);
-                if (child instanceof FrameLayout) {
-                    FrameLayout container = (FrameLayout) child;
-                    for (int j = 0; j < container.getChildCount(); j++) {
-                        View containerChild = container.getChildAt(j);
-                        if (containerChild instanceof RecyclerListView) {
-                            RecyclerListView recyclerView = (RecyclerListView) containerChild;
-                            for (int k = 0; k < recyclerView.getChildCount(); k++) {
-                                View itemView = recyclerView.getChildAt(k);
-                                if (itemView instanceof HistoryCell) {
-                                    HistoryCell cell = (HistoryCell) itemView;
-                                    cell.setMultiSelectMode(isMultiSelectMode);
-                                    if (!isMultiSelectMode) {
-                                        cell.setSelected(false);
-                                    }
-                                }
-                            }
+        if (viewPager == null) return;
+        for (int i = 0; i < viewPager.getChildCount(); i++) {
+            View child = viewPager.getChildAt(i);
+            Object tag = child != null ? child.getTag() : null;
+            if (tag instanceof RecyclerListView) {
+                RecyclerListView recyclerView = (RecyclerListView) tag;
+                for (int k = 0; k < recyclerView.getChildCount(); k++) {
+                    View itemView = recyclerView.getChildAt(k);
+                    if (itemView instanceof HistoryCell) {
+                        HistoryCell cell = (HistoryCell) itemView;
+                        cell.setMultiSelectMode(isMultiSelectMode);
+                        if (!isMultiSelectMode) {
+                            cell.setSelected(false);
                         }
                     }
                 }
@@ -1932,7 +1785,7 @@ public class ChatHistoryActivity extends BaseFragment {
         
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
         builder.setTitle(getString(R.string.ChatHistoryDeleteChats));
-        builder.setMessage(getString(R.string.ChatHistoryDeleteConfirmation) + selectedItems.size() + getString(R.string.ChatHistorySelected));
+        builder.setMessage(LocaleController.formatString(R.string.ChatHistoryDeleteConfirmation) + " " + selectedItems.size() + " " + getString(R.string.ChatHistorySelected) + "?");
         builder.setPositiveButton(getString(R.string.ChatHistoryDeleteChats), (dialog, which) -> {
             deleteSelectedChats();
         });
@@ -1963,10 +1816,7 @@ public class ChatHistoryActivity extends BaseFragment {
                 fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
             }
             updateTabsStyle();
-            // Refresh all pages in ViewPager
-            if (viewPager != null) {
-                viewPager.setAdapter(new CategoryPagerAdapter());
-            }
+            refreshAllPages();
         };
 
         ArrayList<ThemeDescription> themeDescriptions = new ArrayList<>();
