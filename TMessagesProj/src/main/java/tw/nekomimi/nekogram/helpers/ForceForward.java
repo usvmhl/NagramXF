@@ -35,11 +35,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
 
-/**
- * Force Forward Feature Handler
- * Manages force forwarding logic, separated from ChatActivity for better maintainability
- * This class handles forwarding messages as copies to bypass forwarding restrictions
- */
 public class ForceForward {
 
     private static class GroupedMediaItem {
@@ -65,10 +60,6 @@ public class ForceForward {
     private static final int STATUS_FORWARDING = 2;
     private static final int STATUS_STOPPING = 3;
 
-    private boolean isForceForwardMode = false;
-    private ArrayList<MessageObject> forwardingMessages;
-    private MessageObject forwardingMessage;
-    private MessageObject.GroupedMessages forwardingMessageGroup;
     private final ChatActivity parentFragment;
     private final int currentAccount;
     private long activeTaskId;
@@ -84,6 +75,7 @@ public class ForceForward {
     private long mediaLastObservedBytes;
     private int mediaLastMissingCount;
     private final HashSet<String> pendingDownloadKeys = new HashSet<>();
+    private boolean disposed;
 
     private static class MediaPreparationResult {
         int missingMediaCount;
@@ -149,99 +141,29 @@ public class ForceForward {
         return isChatNoForwards(messageObject) || isUnforwardable(messageObject);
     }
 
-    public static void applyToMessage(TLRPC.Message message) {
-        if (message == null) {
-            return;
-        }
-        message.noforwards = false;
-    }
-    
-    /**
-     * Get the current force forward mode status
-     * @return true if in force forward mode, false otherwise
-     */
-    public boolean isForceForwardMode() {
-        return isForceForwardMode;
-    }
-    
-    /**
-     * Set force forward mode status
-     * @param mode true to enable force forward mode, false to disable
-     */
-    public void setForceForwardMode(boolean mode) {
-        this.isForceForwardMode = mode;
-    }
-    
-    /**
-     * Set the single message to be forwarded
-     * @param message the message object to forward
-     */
-    public void setForwardingMessage(MessageObject message) {
-        this.forwardingMessage = message;
-    }
-    
-    /**
-     * Set the grouped messages to be forwarded
-     * @param group the grouped messages object containing multiple related messages
-     */
-    public void setForwardingMessageGroup(MessageObject.GroupedMessages group) {
-        this.forwardingMessageGroup = group;
-    }
-    
-    /**
-     * Get the single message currently set for forwarding
-     * @return the message object to be forwarded, or null if not set
-     */
-    public MessageObject getForwardingMessage() {
-        return forwardingMessage;
-    }
-    
-    /**
-     * Get the grouped messages currently set for forwarding
-     * @return the grouped messages object, or null if not set
-     */
-    public MessageObject.GroupedMessages getForwardingMessageGroup() {
-        return forwardingMessageGroup;
-    }
-    
-    /**
-     * Set multiple messages to be forwarded in batch
-     * @param messages list of message objects to forward
-     */
-    public void setForwardingMessages(ArrayList<MessageObject> messages) {
-        this.forwardingMessages = messages;
-    }
-    
-    /**
-     * Get the list of messages currently set for batch forwarding
-     * @return array list of message objects to be forwarded, or null if not set
-     */
-    public ArrayList<MessageObject> getForwardingMessages() {
-        return forwardingMessages;
-    }
-    
-    /**
-     * Reset force forward mode and clear all forwarding data
-     * Clears the force forward flag and removes all stored messages
-     */
-    public void resetForceForwardMode() {
-        isForceForwardMode = false;
-        forwardingMessages = null;
-        forwardingMessage = null;
-        forwardingMessageGroup = null;
+    private void clearRunState() {
         activeTaskId = 0L;
         currentStatus = STATUS_IDLE;
         totalMessages = 0;
         sentMessages = 0;
         pendingMedia = 0;
         currentStatusDetail = null;
-        lastFailureReason = null;
         stopRequested = false;
         mediaWaitStartTime = 0L;
         mediaLastProgressTime = 0L;
         mediaLastObservedBytes = 0L;
         mediaLastMissingCount = 0;
         pendingDownloadKeys.clear();
+    }
+
+    public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        cancelPendingDownloads();
+        clearRunState();
+        lastFailureReason = null;
     }
 
     public boolean isForwarding() {
@@ -286,12 +208,14 @@ public class ForceForward {
     }
 
     private void notifyStatusChanged() {
+        if (disposed || parentFragment.getParentActivity() == null) {
+            return;
+        }
         AndroidUtilities.runOnUIThread(() -> parentFragment.refreshForceForwardStatus());
     }
 
     private long startRun(int messageCount) {
         activeTaskId++;
-        isForceForwardMode = true;
         currentStatus = STATUS_LOADING;
         totalMessages = Math.max(messageCount, 0);
         sentMessages = 0;
@@ -361,21 +285,12 @@ public class ForceForward {
     }
 
     private void finishRun(long taskId, boolean shouldContinue, CompletionCallback onComplete) {
+        if (disposed) {
+            return;
+        }
         boolean isCurrentTask = activeTaskId == taskId;
         if (isCurrentTask) {
-            isForceForwardMode = false;
-            activeTaskId = 0L;
-            currentStatus = STATUS_IDLE;
-            totalMessages = 0;
-            sentMessages = 0;
-            pendingMedia = 0;
-            currentStatusDetail = null;
-            stopRequested = false;
-            mediaWaitStartTime = 0L;
-            mediaLastProgressTime = 0L;
-            mediaLastObservedBytes = 0L;
-            mediaLastMissingCount = 0;
-            pendingDownloadKeys.clear();
+            clearRunState();
             notifyStatusChanged();
         }
         if (shouldContinue) {
@@ -805,6 +720,78 @@ public class ForceForward {
         }
     }
 
+    private void sendDocumentFallback(MessageObject mo, String caption, long targetDialogId, boolean notify, int scheduleDate) {
+        String filePath = resolvePath(mo);
+        MessageObject replyToMsg = parentFragment.getThreadMessage();
+        MessageObject replyToTopMsg = parentFragment.getThreadMessage();
+        SendMessagesHelper.prepareSendingDocument(
+                parentFragment.getAccountInstance(),
+                filePath,
+                filePath,
+                null,
+                caption,
+                null,
+                targetDialogId,
+                replyToMsg,
+                replyToTopMsg,
+                null,
+                null,
+                null,
+                notify,
+                scheduleDate,
+                null,
+                parentFragment.quickReplyShortcut,
+                parentFragment.getQuickReplyId(),
+                false
+        );
+    }
+
+    private void sendLeftoverGroupAsSingles(ArrayList<GroupedMediaItem> group, long targetDialogId, boolean notify, int scheduleDate, long payStars, boolean documentFallback) {
+        if (group == null || group.isEmpty()) {
+            return;
+        }
+        FileLog.w("ForceForward: degraded leftover " + (documentFallback ? "document" : "media") + " group to singles");
+        for (int i = 0; i < group.size(); i++) {
+            GroupedMediaItem item = group.get(i);
+            MessageObject messageObject = item.messageObject;
+            if (messageObject == null) {
+                onMessageSkipped();
+                continue;
+            }
+            String copyLabel;
+            String fallbackLabel;
+            boolean sent;
+            if (documentFallback) {
+                copyLabel = LocaleController.getString(R.string.ForceForwardStatusDocumentCopy);
+                fallbackLabel = LocaleController.getString(R.string.ForceForwardStatusDocumentFallback);
+                updateForwardingState(copyLabel);
+                sent = sendMappedDocument(messageObject, item.caption, targetDialogId, notify, scheduleDate, payStars);
+                if (!sent) {
+                    updateForwardingState(fallbackLabel);
+                    sendDocumentFallback(messageObject, item.caption, targetDialogId, notify, scheduleDate);
+                }
+            } else {
+                copyLabel = messageObject.isPhoto()
+                        ? LocaleController.getString(R.string.ForceForwardStatusPhotoCopy)
+                        : LocaleController.getString(R.string.ForceForwardStatusMediaCopy);
+                fallbackLabel = LocaleController.getString(R.string.ForceForwardStatusMediaFallback);
+                updateForwardingState(copyLabel);
+                sent = messageObject.isPhoto()
+                        ? sendMappedPhoto(messageObject, item.caption, targetDialogId, notify, scheduleDate, payStars)
+                        : sendMappedDocument(messageObject, item.caption, targetDialogId, notify, scheduleDate, payStars);
+                if (!sent) {
+                    updateForwardingState(fallbackLabel);
+                    ArrayList<SendMessagesHelper.SendingMediaInfo> one = new ArrayList<>(1);
+                    SendMessagesHelper.SendingMediaInfo info = createMediaInfo(messageObject, item.caption);
+                    info.isVideo = messageObject.isVideo() || messageObject.isGif();
+                    one.add(info);
+                    sendMediaBatch(one, targetDialogId, false, false, notify, scheduleDate, payStars);
+                }
+            }
+            onMessageSent();
+        }
+    }
+
     private void addToGroup(long gid,
                             GroupedMediaItem item,
                             HashMap<Long, ArrayList<GroupedMediaItem>> map,
@@ -829,18 +816,8 @@ public class ForceForward {
         }
     }
     
-    /**
-     * Execute force forward operation
-     * Processes messages and sends them as copies to bypass forwarding restrictions
-     * Handles different message types: text, photos, videos, documents, stickers
-     * Groups related media messages and sends them as albums when appropriate
-     * 
-     * @param messagesToSend list of messages to forward
-     * @param targetDialogId ID of the target chat/dialog
-     * @param showUndo whether to show undo option (currently unused)
-     */
     public void runForceForward(ArrayList<MessageObject> messagesToSend, long targetDialogId, boolean showUndo, boolean hideCaption, boolean notify, int scheduleDate, long payStars, CompletionCallback onComplete) {
-        if (messagesToSend == null || messagesToSend.isEmpty() || parentFragment.getParentActivity() == null) {
+        if (disposed || messagesToSend == null || messagesToSend.isEmpty() || parentFragment.getParentActivity() == null) {
             setFailureReason(null);
             if (onComplete != null) {
                 onComplete.onComplete(false);
@@ -853,6 +830,9 @@ public class ForceForward {
     }
 
     private void runForceForward(ArrayList<MessageObject> messagesToSend, long targetDialogId, boolean showUndo, boolean hideCaption, boolean notify, int scheduleDate, long payStars, long taskId, int retryCount, CompletionCallback onComplete) {
+        if (disposed) {
+            return;
+        }
         if (!isTaskActive(taskId)) {
             finishRun(taskId, false, onComplete);
             return;
@@ -957,29 +937,7 @@ public class ForceForward {
                         updateForwardingState(LocaleController.getString(R.string.ForceForwardStatusDocumentCopy));
                         if (!sendMappedDocument(mo, caption, targetDialogId, notify, scheduleDate, payStars)) {
                             updateForwardingState(LocaleController.getString(R.string.ForceForwardStatusDocumentFallback));
-                            String filePath = resolvePath(mo);
-                            MessageObject replyToMsg = parentFragment.getThreadMessage();
-                            MessageObject replyToTopMsg = parentFragment.getThreadMessage();
-                            SendMessagesHelper.prepareSendingDocument(
-                                    parentFragment.getAccountInstance(),
-                                    filePath,
-                                    filePath,
-                                    null,
-                                    caption,
-                                    null,
-                                    targetDialogId,
-                                    replyToMsg,
-                                    replyToTopMsg,
-                                    null,
-                                    null,
-                                    null,
-                                    notify,
-                                    scheduleDate,
-                                    null,
-                                    parentFragment.quickReplyShortcut,
-                                    parentFragment.getQuickReplyId(),
-                                    false
-                            );
+                            sendDocumentFallback(mo, caption, targetDialogId, notify, scheduleDate);
                         }
                         onMessageSent();
                     }
@@ -1016,10 +974,10 @@ public class ForceForward {
 
             // 3. Process Leftover Groups
             for (ArrayList<GroupedMediaItem> group : albumMap.values()) {
-                sendMappedGroup(new ArrayList<>(group), targetDialogId, notify, scheduleDate, payStars, false);
+                sendLeftoverGroupAsSingles(new ArrayList<>(group), targetDialogId, notify, scheduleDate, payStars, false);
             }
             for (ArrayList<GroupedMediaItem> group : docAlbumMap.values()) {
-                sendMappedGroup(new ArrayList<>(group), targetDialogId, notify, scheduleDate, payStars, true);
+                sendLeftoverGroupAsSingles(new ArrayList<>(group), targetDialogId, notify, scheduleDate, payStars, true);
             }
 
             if (!isTaskActive(taskId) || stopRequested) {
