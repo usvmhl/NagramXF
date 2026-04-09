@@ -11236,6 +11236,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         floatingButtonHidden = hide;
         updateFloatingButtonVisibility(true);
 
+        if (mainTabsActivityController != null && NaConfig.INSTANCE.getMainTabsHideOnScroll().Bool()) {
+            mainTabsActivityController.setTabsScrollHide(hide);
+        }
+
         if (hide) {
             if (storyHint != null) {
                 storyHint.hide();
@@ -13933,6 +13937,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final boolean mainTabsVisible = !searching && (blurredView == null || blurredView.getBackground() == null || blurredView.getAlpha() < 0.01f || blurredView.getVisibility() == View.GONE);
         if (mainTabsActivityController != null) {
             mainTabsActivityController.setTabsVisible(mainTabsVisible);
+            if (!mainTabsVisible) {
+                mainTabsActivityController.setTabsScrollHide(false);
+            }
         }
     }
 
