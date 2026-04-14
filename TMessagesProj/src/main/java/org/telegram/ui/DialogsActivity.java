@@ -11240,7 +11240,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         floatingButtonHidden = hide;
         updateFloatingButtonVisibility(true);
 
-        if (mainTabsActivityController != null && NaConfig.INSTANCE.getMainTabsHideOnScroll().Bool()) {
+        if (mainTabsActivityController != null && NaConfig.INSTANCE.getMainTabsDisplayMode().Int() == MainTabsHelper.BOTTOM_BAR_MODE_FLOATING) {
             mainTabsActivityController.setTabsScrollHide(hide);
         }
 
@@ -13528,7 +13528,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean addHiddenMainTabsShortcuts(ItemOptions io) {
-        if (mainTabsActivityController == null || !NaConfig.INSTANCE.getMainTabsHideBottomBar().Bool()) {
+        if (mainTabsActivityController == null || NaConfig.INSTANCE.getMainTabsDisplayMode().Int() != MainTabsHelper.BOTTOM_BAR_MODE_HIDE) {
             return false;
         }
 
@@ -13656,7 +13656,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 presentFragment(new ChatActivity(args));
             });
             if (mainTabsActivityController != null
-                    && NaConfig.INSTANCE.getMainTabsHideBottomBar().Bool()
+                    && NaConfig.INSTANCE.getMainTabsDisplayMode().Int() == MainTabsHelper.BOTTOM_BAR_MODE_HIDE
                     && NaConfig.INSTANCE.getShowAddToBookmark().Bool()) {
                 io.add(R.drawable.msg_fave, getString(R.string.BookmarksManager), () -> {
                     presentFragment(new BookmarkManagerActivity());
