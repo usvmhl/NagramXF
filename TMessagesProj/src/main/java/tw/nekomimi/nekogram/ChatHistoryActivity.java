@@ -1179,8 +1179,9 @@ public class ChatHistoryActivity extends BaseFragment {
         final boolean finalCanOpen = canOpen;
 
         // Create popup layout
-        ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(getContext());
+        ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(getContext(), R.drawable.popup_fixed_alert4, getResourceProvider(), 0);
         popupLayout.setFitItems(true);
+        popupLayout.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuBackground, getResourceProvider()));
 
         // Create and show popup window
         ActionBarPopupWindow popupWindow = new ActionBarPopupWindow(popupLayout, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT);
