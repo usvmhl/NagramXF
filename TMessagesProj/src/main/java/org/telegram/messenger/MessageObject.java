@@ -231,6 +231,10 @@ public class MessageObject {
     public boolean isDateObject;
     public boolean isVideoConversionObject;
     public boolean isPlayingExplanationObject;
+    // NagramX: per-session filter bypass. When true, AyuFilter.isFiltered treats this message
+    // as non-filtered, letting ChatActivity temporarily reveal filtered messages without
+    // touching the user's filter configuration.
+    public boolean skipAyuFiltering;
     public TLObject photoThumbsObject;
     public TLObject photoThumbsObject2;
     public ArrayList<TLRPC.PhotoSize> photoThumbs;
