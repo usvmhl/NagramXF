@@ -3080,7 +3080,15 @@ public class LocaleController {
                     return LastSeenHelper.getFormattedLastSeenOrDefault(user, madeShorter, getString(R.string.WithinAMonth));
                     // return getString("WithinAMonth", R.string.WithinAMonth);
                 } else {
-                    return formatDateOnline(user.status.expires, madeShorter);
+                    // Prefer a locally observed timestamp (message/reaction/peek/status update) when it is
+                    // fresher than the one the server hands out here. Normally TL_updateUserStatus keeps
+                    // user.status.expires in sync, but in rare cases (dropped update, page loaded from
+                    // cache, PeekOnline result saved while the server-side status object is stale) our
+                    // saved value is strictly newer and more accurate. Falls back to expires for anyone
+                    // we have not observed or when the feature is disabled (getLastSeen returns 0).
+                    int savedLastSeen = LastSeenHelper.getLastSeen(user.id);
+                    int effectiveLastSeen = Math.max(user.status.expires, savedLastSeen);
+                    return formatDateOnline(effectiveLastSeen, madeShorter);
                 }
             }
         }
