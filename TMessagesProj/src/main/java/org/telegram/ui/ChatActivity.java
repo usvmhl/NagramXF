@@ -39330,8 +39330,18 @@ public class ChatActivity extends BaseFragment implements
                             }
                         }
                     }
-                    if (AyuFilter.shouldHideFilteredMessage(msg, getGroup(msg.getGroupId()))) {
-                        return -1000;
+                    {
+                        var filterGroup = getGroup(msg.getGroupId());
+                        if (filterGroup == null) {
+                            filterGroup = getValidGroupedMessage(msg);
+                        }
+                        var filterMsg = filterGroup != null ? filterGroup.findPrimaryMessageObject() : null;
+                        if (filterMsg == null) {
+                            filterMsg = msg;
+                        }
+                        if (AyuFilter.shouldHideFilteredMessage(filterMsg, filterGroup)) {
+                            return -1000;
+                        }
                     }
                 }
                 if (msg.contentType == 2) { // ChatUnreadCell
@@ -39357,7 +39367,14 @@ public class ChatActivity extends BaseFragment implements
                                 }
                             }
                             var g = getGroup(m.getGroupId());
-                            if (AyuFilter.shouldHideFilteredMessage(m, g)) {
+                            if (g == null) {
+                                g = getValidGroupedMessage(m);
+                            }
+                            var fm = g != null ? g.findPrimaryMessageObject() : null;
+                            if (fm == null) {
+                                fm = m;
+                            }
+                            if (AyuFilter.shouldHideFilteredMessage(fm, g)) {
                                 continue;
                             }
                         }
@@ -45775,8 +45792,19 @@ public class ChatActivity extends BaseFragment implements
                 if (AyuFilter.shouldHideIgnoredBlockedMessages() && (isBlockedUser(fromId) || AyuFilter.isBlockedChannel(fromId))) {
                     continue;
                 }
-                if (AyuFilter.shouldHideFilteredMessage(messages.get(i), null)) {
-                    continue;
+                {
+                    var selMsg = messages.get(i);
+                    var selGroup = getGroup(selMsg.getGroupId());
+                    if (selGroup == null) {
+                        selGroup = getValidGroupedMessage(selMsg);
+                    }
+                    var selFilterMsg = selGroup != null ? selGroup.findPrimaryMessageObject() : null;
+                    if (selFilterMsg == null) {
+                        selFilterMsg = selMsg;
+                    }
+                    if (AyuFilter.shouldHideFilteredMessage(selFilterMsg, selGroup)) {
+                        continue;
+                    }
                 }
                 if (msgId > begin && msgId < end && selectedMessagesIds[0].indexOfKey(msgId) < 0) {
                     MessageObject message = messages.get(i);
