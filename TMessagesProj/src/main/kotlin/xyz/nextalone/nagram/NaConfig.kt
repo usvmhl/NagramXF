@@ -1483,7 +1483,7 @@ object NaConfig {
         addConfig(
             "SwitchStyle",
             ConfigItem.configTypeInt,
-            0 // 0: default; 1: Modern; 2: MD3; 3: OneUI
+            0 // 0: default; 1: MD3; 2: OneUI
         )
     val sliderStyle =
         addConfig(
@@ -1699,6 +1699,16 @@ object NaConfig {
         val normalizedLlmApiUrl = LlmUrlNormalizer.normalizeBaseUrl(currentLlmApiUrl)
         if (normalizedLlmApiUrl != currentLlmApiUrl) {
             llmApiUrl.setConfigString(normalizedLlmApiUrl)
+        }
+
+        // Modern switch style was removed; remap legacy indices: 1->0, 2->1, 3->2.
+        if (!getPreferences().getBoolean("SwitchStyleModernRemoved", false)) {
+            when (switchStyle.Int()) {
+                1 -> switchStyle.setConfigInt(0)
+                2 -> switchStyle.setConfigInt(1)
+                3 -> switchStyle.setConfigInt(2)
+            }
+            getPreferences().edit { putBoolean("SwitchStyleModernRemoved", true) }
         }
     }
 
