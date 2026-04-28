@@ -34,6 +34,7 @@ import org.telegram.ui.Components.UndoView;
 import org.telegram.ui.LaunchActivity;
 
 import tw.nekomimi.nekogram.NekoConfig;
+import tw.nekomimi.nekogram.ui.cells.HeaderCell;
 import tw.nekomimi.nekogram.config.CellGroup;
 import tw.nekomimi.nekogram.config.cell.AbstractConfigCell;
 import tw.nekomimi.nekogram.config.cell.ConfigCellCustom;
@@ -252,6 +253,29 @@ public class NekoAppearanceSettingsActivity extends BaseNekoXSettingsActivity {
                     || key.equals(NekoConfig.navigationDrawerEnabled.getKey())) {
                 tooltip.showWithAction(0, UndoView.ACTION_NEED_RESTART, null, null);
             } else if (key.equals(NaConfig.INSTANCE.getSectionsSeparatedHeaders().getKey())) {
+                // Force RecyclerView to re-evaluate ListSectionsDecoration.getItemOffsets for
+                // every child. The section lambda picks up the new flag immediately, but child
+                // views keep the old left/right insets (HeaderCell was 0..listWidth when
+                // separated=true, becomes 12dp..listWidth-12dp when separated=false). Without
+                // this call, drawSectionBackground reads from.getLeft()/getRight() from the
+                // stale layout and paints the MD3 container edge-to-edge until the next layout
+                // pass. invalidateItemDecorations marks insets dirty and requestLayouts so the
+                // very next traversal lays children out correctly before drawing.
+                if (listView != null) {
+                    // Re-apply HeaderCell padding/margins on the visible HeaderCell instances so
+                    // the 3dp bottom-padding gap (under the title, above the MD3 container) shows
+                    // up immediately instead of waiting until cells are recycled.
+                    for (int i = 0, n = listView.getChildCount(); i < n; i++) {
+                        View child = listView.getChildAt(i);
+                        if (child instanceof HeaderCell) {
+                            ((HeaderCell) child).applySeparatedHeadersStyle();
+                        }
+                    }
+                    // Drop pooled HeaderCell instances so off-screen cached cells are not reused
+                    // with the stale, constructor-baked padding when scrolled back in.
+                    listView.getRecycledViewPool().clear();
+                    listView.invalidateItemDecorations();
+                }
                 reloadUI(0);
             } else if (key.equals(NekoConfig.forceBlurInChat.getKey())) {
                 boolean enabled = (Boolean) newValue;
