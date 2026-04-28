@@ -9569,6 +9569,29 @@ public class ChatActivity extends BaseFragment implements
     // can audit them without editing the filter configuration. Toggled from the AyuGram submenu.
     private boolean hideFilteredMessages = true;
 
+    // AyuGram parity (com.radolyn.ayugram.ui.ActionsPopupWrapper.updateSwitchFilteringVisibility):
+    // the "Show Filtered" submenu item starts hidden and only becomes visible the first time
+    // a message in this chat is actually filtered out. In channels/groups where no rule
+    // matches anything, the item never appears, keeping the menu uncluttered.
+    private ActionBarMenuSubItem showFilteredMenuItem;
+    private boolean showFilteredMenuItemRevealed = false;
+
+    private void revealShowFilteredMenuItem() {
+        if (showFilteredMenuItemRevealed) {
+            return;
+        }
+        final ActionBarMenuSubItem item = showFilteredMenuItem;
+        if (item == null) {
+            return;
+        }
+        showFilteredMenuItemRevealed = true;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (item.getVisibility() != View.VISIBLE) {
+                item.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
     private void createAyuGramMenuItem() {
         if (headerItem == null || getParentActivity() == null) {
             return;
@@ -9694,7 +9717,12 @@ public class ChatActivity extends BaseFragment implements
 
             // Align with AyuGram: use the broom icon for the "Show Filtered" chat-menu toggle.
             // Menu text changes based on state: "Show Filtered" when hidden, "Hide Filtered" when shown.
+            // Start hidden — getItemViewType() reveals the item the first time a message in this
+            // chat is actually filtered. Channels/groups with no rule hits keep the menu uncluttered.
             ActionBarMenuSubItem showFilteredItem = new ActionBarMenuSubItem(getContext(), false, false, false, getResourceProvider());
+            showFilteredMenuItem = showFilteredItem;
+            showFilteredMenuItemRevealed = false;
+            showFilteredItem.setVisibility(View.GONE);
             showFilteredItem.setTextAndIcon(getString(hideFilteredMessages ? R.string.ShowFilteredMessagesMenuText : R.string.HideFilteredMessagesMenuText), R.drawable.msg_clear_recent);
             showFilteredItem.setOnClickListener(v -> {
                 hideFilteredMessages = !hideFilteredMessages;
@@ -39318,11 +39346,13 @@ public class ChatActivity extends BaseFragment implements
                     if (AyuFilter.shouldHideIgnoredBlockedMessages() && ChatObject.isMegagroup(currentChat)) {
                         long fromId = msg.getFromChatId();
                         if (isBlockedUser(fromId) || AyuFilter.isBlockedChannel(fromId)) {
+                            revealShowFilteredMenuItem();
                             return -1000;
                         }
                         if (msg.replyMessageObject != null) {
                             fromId = msg.replyMessageObject.getFromChatId();
                             if (isBlockedUser(fromId) || AyuFilter.isBlockedChannel(fromId)) {
+                                revealShowFilteredMenuItem();
                                 return -1000;
                             }
                         }
@@ -39337,6 +39367,7 @@ public class ChatActivity extends BaseFragment implements
                             filterMsg = msg;
                         }
                         if (AyuFilter.shouldHideFilteredMessage(filterMsg, filterGroup)) {
+                            revealShowFilteredMenuItem();
                             return -1000;
                         }
                     }
