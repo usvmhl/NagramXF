@@ -120,7 +120,7 @@ public class CameraSessionWrapper {
 
     public void setFlipFront(boolean flip) {
         if (camera2Session != null) {
-            camera2Session.setFlipFront(flip);
+            // TODO
         } else if (camera1Session != null) {
             camera1Session.setFlipFront(flip);
         }
