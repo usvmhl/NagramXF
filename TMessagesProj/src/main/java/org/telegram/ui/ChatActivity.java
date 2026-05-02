@@ -3183,6 +3183,7 @@ public class ChatActivity extends BaseFragment implements
         getNotificationCenter().addObserver(this, NotificationCenter.botForumDraftUpdate);
         getNotificationCenter().addObserver(this, NotificationCenter.botForumDraftDelete);
         getNotificationCenter().addObserver(this, NotificationCenter.joinedGroup);
+        getNotificationCenter().addObserver(this, NotificationCenter.regexFiltersUpdated);
         getNotificationCenter().addObserver(this, AyuConstants.MESSAGES_DELETED_NOTIFICATION);
         getNotificationCenter().addObserver(this, AyuConstants.DELETED_MEDIA_LOADED_NOTIFICATION);
 
@@ -3701,6 +3702,7 @@ public class ChatActivity extends BaseFragment implements
         getNotificationCenter().removeObserver(this, NotificationCenter.botForumDraftUpdate);
         getNotificationCenter().removeObserver(this, NotificationCenter.botForumDraftDelete);
         getNotificationCenter().removeObserver(this, NotificationCenter.joinedGroup);
+        getNotificationCenter().removeObserver(this, NotificationCenter.regexFiltersUpdated);
         getNotificationCenter().removeObserver(this, AyuConstants.MESSAGES_DELETED_NOTIFICATION);
         getNotificationCenter().removeObserver(this, AyuConstants.DELETED_MEDIA_LOADED_NOTIFICATION);
 
@@ -25790,6 +25792,13 @@ public class ChatActivity extends BaseFragment implements
                 });
             } catch (Exception e) {
                 FileLog.e(e);
+            }
+        }
+        // --- Regex filters updated
+        else if (id == NotificationCenter.regexFiltersUpdated) {
+            // Regex filters changed, refresh chat to show/hide filtered messages
+            if (chatAdapter != null) {
+                chatAdapter.notifyDataSetChanged();
             }
         }
         // --- AyuGram hook (ayuDeleted)

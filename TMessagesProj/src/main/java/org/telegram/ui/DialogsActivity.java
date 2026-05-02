@@ -2894,6 +2894,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
                 getNotificationCenter().addObserver(this, NotificationCenter.dialogFiltersUpdated);
+                getNotificationCenter().addObserver(this, NotificationCenter.regexFiltersUpdated);
             }
             getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
             getNotificationCenter().addObserver(this, NotificationCenter.encryptedChatUpdated);
@@ -3113,6 +3114,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             if (!onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) {
                 getNotificationCenter().removeObserver(this, NotificationCenter.dialogFiltersUpdated);
+                getNotificationCenter().removeObserver(this, NotificationCenter.regexFiltersUpdated);
             }
             getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
             getNotificationCenter().removeObserver(this, NotificationCenter.encryptedChatUpdated);
@@ -10839,6 +10841,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
         } else if (id == NotificationCenter.dialogFiltersUpdated) {
             updateFilterTabs(true, true);
+        } else if (id == NotificationCenter.regexFiltersUpdated) {
+            // Regex filters changed, refresh visible dialogs to show/hide filtered messages
+            updateVisibleRows(MessagesController.UPDATE_MASK_CHECK);
         } else if (id == NotificationCenter.filterSettingsUpdated) {
             showFiltersHint();
         } else if (id == NotificationCenter.newSuggestionsAvailable) {
